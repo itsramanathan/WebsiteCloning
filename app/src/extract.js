@@ -10,6 +10,8 @@ export const LIMITS = Object.freeze({
   attemptMs: 5 * 60 * 1_000,
 });
 
+export const DEMO_PAGE_COUNT = Object.freeze({ min: 1, max: 8, default: 5 });
+
 const entities = { amp: '&', apos: "'", gt: '>', lt: '<', nbsp: ' ', quot: '"' };
 
 export function decodeHtml(value = '') {
@@ -282,9 +284,15 @@ function sameItem(a, b) {
   return a.name.toLowerCase() === b.name.toLowerCase() || (a.sourceUrl && b.sourceUrl && a.sourceUrl === b.sourceUrl);
 }
 
-export function buildDescription(pages, submittedUrl) {
+export function buildDescription(pages, submittedUrl, requestedPageCount) {
   const home = pages[0];
   if (!home) throw new Error('No source page was captured.');
+  const pageCount = requestedPageCount ?? DEMO_PAGE_COUNT.default;
+  if (!Number.isInteger(pageCount) || pageCount < DEMO_PAGE_COUNT.min || pageCount > DEMO_PAGE_COUNT.max) {
+    const error = new Error(`Maximum demo pages must be an integer from ${DEMO_PAGE_COUNT.min} to ${DEMO_PAGE_COUNT.max}.`);
+    error.code = 'INVALID_PAGE_COUNT';
+    throw error;
+  }
   const merged = [];
   for (const page of pages) {
     for (const item of page.catalog) {
@@ -296,12 +304,9 @@ export function buildDescription(pages, submittedUrl) {
   }
   const hasProducts = merged.some((item) => item.kind === 'product');
   const kind = hasProducts ? 'retail' : 'b2b';
-  const selected = merged.filter((item) => item.kind === (hasProducts ? 'product' : 'offering')).slice(0, hasProducts ? LIMITS.products : LIMITS.offerings);
-  if (!selected.length) {
-    const error = new Error('No credible public product or offering catalog was found. Try a server-rendered collection page.');
-    error.code = 'NO_CATALOG';
-    throw error;
-  }
+  const available = merged.filter((item) => item.kind === (hasProducts ? 'product' : 'offering')).slice(0, hasProducts ? LIMITS.products : LIMITS.offerings);
+  const selected = available.slice(0, Math.max(0, pageCount - 2));
+  const actualPageCount = available.length ? Math.min(pageCount, available.length + 2) : 1;
   const titleParts = home.title.split(/\s*(?:[|–—]|\s-\s)\s*/).map((part) => part.trim()).filter(Boolean);
   const titleName = /^(?:all )?(?:products?|catalog|collection|shop|home|services?|solutions?)$/i.test(titleParts[0] || '') ? titleParts[1] : titleParts[0];
   const rawName = home.siteName || titleName || new URL(submittedUrl).hostname.replace(/^www\./, '');
@@ -312,8 +317,14 @@ export function buildDescription(pages, submittedUrl) {
     sourceUrl: submittedUrl,
     sourcePages: pages.map((page) => page.url).slice(0, LIMITS.pages),
     capturedAt: new Date().toISOString(),
+    requestedPageCount: pageCount,
+    actualPageCount,
     kind,
     notice: 'Demo - sample products and information. No real orders.',
+    home: {
+      heading: home.heading || undefined,
+      description: home.description.slice(0, 360) || undefined,
+    },
     hero: home.hasHero ? {
       eyebrow: kind === 'b2b' ? 'Solutions preview' : 'Store preview',
       title: home.heading || rawName,

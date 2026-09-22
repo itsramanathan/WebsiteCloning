@@ -72,7 +72,7 @@ function setField(target, field, value) {
   else current[parts.at(-1)] = value;
 }
 
-export async function buildAttempt({ sourceUrl, attemptDir, deadline = Date.now() + LIMITS.attemptMs, fetch = fetchPublic, signal }) {
+export async function buildAttempt({ sourceUrl, attemptDir, requestedPageCount, deadline = Date.now() + LIMITS.attemptMs, fetch = fetchPublic, signal }) {
   throwIfAborted(signal);
   const submitted = new URL(sourceUrl);
   const pages = [];
@@ -122,7 +122,7 @@ export async function buildAttempt({ sourceUrl, attemptDir, deadline = Date.now(
     }
   }
 
-  const description = buildDescription(pages, submitted.href);
+  const description = buildDescription(pages, submitted.href, requestedPageCount);
   description.limitations.push(...new Set(captureLimitations));
   throwIfAborted(signal);
   await mkdir(attemptDir, { recursive: true });

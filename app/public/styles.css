@@ -40,7 +40,10 @@ label { font-family: 'Trebuchet MS', Verdana, sans-serif; font-weight: 700; }
 .builder-panel h2 { margin: .3rem 0 1rem; font-size: clamp(2rem, 5vw, 4rem); line-height: 1; }
 .builder-panel p { line-height: 1.55; color: #d9d2c8; }
 .url-form { display: grid; gap: .7rem; }
-.url-row { display: grid; grid-template-columns: 1fr auto; gap: .6rem; }
+.url-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .45fr) auto; gap: .6rem; align-items: end; }
+.page-count-field { display: grid; gap: .35rem; }
+.page-count-field label { font-size: .8rem; }
+.page-count-field p { margin: 0; font-size: .78rem; line-height: 1.3; }
 .form-message { min-height: 1.2em; margin: 0; color: var(--muted); }
 .builder-panel .form-message { color: #f2c8b9; }
 .preview-list { margin-top: 3rem; }
@@ -49,6 +52,7 @@ label { font-family: 'Trebuchet MS', Verdana, sans-serif; font-weight: 700; }
 .demo-card { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; padding: 1.4rem 0; border-top: 1px solid var(--line); }
 .demo-card h2 { margin: .25rem 0; }
 .source { max-width: 42rem; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.page-count { margin: .35rem 0 0; color: var(--muted); font: .8rem/1.4 'Trebuchet MS', Verdana, sans-serif; }
 .status { display: inline-flex; align-items: center; gap: .4rem; margin: 0; font: 700 .75rem/1 'Trebuchet MS', sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 .status span { width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; }
 .status-ready { color: var(--good); }

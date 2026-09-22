@@ -17,8 +17,8 @@ const { chromium } = require(playwrightPath);
 const screenshots = path.join(appRoot, 'review', 'screenshots');
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
-function fixture(sourceUrl) {
-  const items = Array.from({ length: 6 }, (_, index) => ({
+function fixture(sourceUrl, requestedPageCount = 5) {
+  const items = Array.from({ length: requestedPageCount - 2 }, (_, index) => ({
     id: `book-${index + 1}`,
     kind: 'product',
     name: index === 0 ? 'A Complete and Untruncated Book Title' : `Archive Book ${index + 1}`,
@@ -33,6 +33,8 @@ function fixture(sourceUrl) {
     sourceUrl,
     sourcePages: [sourceUrl],
     capturedAt: new Date().toISOString(),
+    requestedPageCount,
+    actualPageCount: requestedPageCount,
     kind: 'retail',
     notice: 'Demo - sample products and information. No real orders.',
     hero: null,
@@ -51,11 +53,11 @@ function fixture(sourceUrl) {
   };
 }
 
-async function fixtureBuilder({ sourceUrl, attemptDir }) {
+async function fixtureBuilder({ sourceUrl, attemptDir, requestedPageCount }) {
   await new Promise((resolve) => setTimeout(resolve, 100));
   await mkdir(path.join(attemptDir, 'assets'), { recursive: true });
   await writeFile(path.join(attemptDir, 'assets', '01.png'), png);
-  const description = fixture(sourceUrl);
+  const description = fixture(sourceUrl, requestedPageCount);
   const artifact = path.join(attemptDir, 'artifact.json');
   await writeFile(artifact, JSON.stringify(description));
   return { artifact, description };
@@ -94,8 +96,10 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const errors = [];
+  const consoleErrors = [];
   let shareUrl;
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   page.on('dialog', (dialog) => {
     if (dialog.type() === 'prompt') shareUrl = dialog.defaultValue();
     dialog.accept();
@@ -105,8 +109,11 @@ try {
   await page.getByLabel('Operator password').fill('browser regression password');
   await page.getByRole('button', { name: 'Enter workshop' }).click();
   await page.getByLabel('Public store or B2B website URL').fill('https://archive.example/');
+  await page.getByLabel('Maximum demo pages').fill('5');
+  await page.getByText('We’ll create up to this many pages, based on what the source website actually provides.').waitFor();
   await page.getByRole('button', { name: 'Build preview' }).click();
   await page.getByRole('link', { name: 'Open preview' }).waitFor();
+  await page.getByText('Requested maximum: 5 pages; generated: 5.').waitFor();
   const firstPreviewPath = await page.getByRole('link', { name: 'Open preview' }).getAttribute('href');
   const firstDemoId = firstPreviewPath.split('/').at(-1);
   const demoCard = page.locator(`[data-demo-id="${firstDemoId}"]`);
@@ -133,7 +140,7 @@ try {
     const response = await fetch('/api/demos', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-      body: JSON.stringify({ url: 'https://second.example/' }),
+      body: JSON.stringify({ url: 'https://second.example/', pageCount: 5 }),
     });
     return { status: response.status, body: await response.json() };
   });
@@ -194,9 +201,11 @@ try {
   if (!(await sourceInput.evaluate((input) => input === document.activeElement))) throw new Error('Background polling stole focus from the URL input.');
   await demoCard.getByRole('link', { name: 'Open preview' }).click();
   const previewUrl = page.url();
+  if (await page.locator('a[href*="/item/"]').count() !== 3) throw new Error('A five-page demo did not render exactly three detail links on desktop.');
 
   await page.screenshot({ path: path.join(screenshots, 'desktop-home.png'), fullPage: true });
   await page.getByRole('link', { name: 'Collection' }).click();
+  if (await page.locator('a[href*="/item/"]').count() !== 3) throw new Error('Collection did not render exactly three detail links on desktop.');
   await page.screenshot({ path: path.join(screenshots, 'desktop-collection.png'), fullPage: true });
   await page.getByRole('link', { name: /Open A Complete/ }).click();
   await page.screenshot({ path: path.join(screenshots, 'desktop-detail.png'), fullPage: true });
@@ -216,12 +225,14 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(previewUrl);
   await page.screenshot({ path: path.join(screenshots, 'phone-home.png'), fullPage: true });
+  if (await page.locator('a[href*="/item/"]').count() !== 3) throw new Error('A five-page demo did not render exactly three detail links on phone.');
   const collectionLink = page.getByRole('link', { name: 'Collection' });
   if (!(await collectionLink.isVisible())) throw new Error('Collection navigation is hidden at phone width.');
   const navTargets = await page.locator('.demo-header nav a').evaluateAll((links) => links.map((link) => link.getBoundingClientRect().height));
   if (navTargets.some((height) => height < 24)) throw new Error(`Phone navigation target below 24px: ${navTargets.join(', ')}`);
   await collectionLink.click();
   await page.screenshot({ path: path.join(screenshots, 'phone-collection.png'), fullPage: true });
+  if (await page.locator('a[href*="/item/"]').count() !== 3) throw new Error('Collection did not render exactly three detail links on phone.');
   await page.getByRole('link', { name: /Open A Complete/ }).click();
   await page.screenshot({ path: path.join(screenshots, 'phone-detail.png'), fullPage: true });
   if (await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)) throw new Error('Phone view has horizontal overflow.');
@@ -233,7 +244,7 @@ try {
   if (await page.evaluate(() => document.activeElement?.tagName) !== 'H2') throw new Error('Delete did not move focus to the surviving preview heading.');
   await page.getByText(`${deletedName} was deleted.`, { exact: true }).waitFor();
   await page.screenshot({ path: path.join(screenshots, 'dashboard-after-delete.png'), fullPage: true });
-  if (errors.length) throw new Error(`Browser page errors: ${errors.join('; ')}`);
+  if (errors.length || consoleErrors.length) throw new Error(`Browser errors: ${[...errors, ...consoleErrors].join('; ')}`);
 
   console.log(JSON.stringify({
     views: ['home', 'collection', 'detail'],
@@ -247,7 +258,11 @@ try {
     dashboardFocusRestored: true,
     deleteFocusRestored: true,
     phoneNavigationTargets: '>=24px',
+    requestedPageCount: 5,
+    actualPageCount: 5,
+    detailLinksPerView: 3,
     pageErrors: 0,
+    consoleErrors: 0,
     screenshots,
   }));
 } finally {

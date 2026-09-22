@@ -1,0 +1,26 @@
+{
+  "source": "https://suitsupply.com/",
+  "observedAt": "2026-09-22T06:46:08Z",
+  "status": "ready",
+  "requestedPageCount": 5,
+  "actualPageCount": 5,
+  "sourcePages": [
+    "https://suitsupply.com/en-us/",
+    "https://suitsupply.com/en-us/men/black-tie-collection",
+    "https://suitsupply.com/en-us/men/black-tie-collection/suits-tuxedo",
+    "https://suitsupply.com/en-us/men/waistcoats/black-tuxedo-waistcoat/W2299.html"
+  ],
+  "generatedPages": [
+    "Home",
+    "Collection",
+    "Tuxedo Vest",
+    "Tailored Fit Widespread Collar Tuxedo Shirt",
+    "Tuxedo Loafer"
+  ],
+  "browserChecks": {
+    "dashboardDisclosedRequestedAndActual": true,
+    "homeDetailLinks": 3,
+    "collectionDetailLinks": 3,
+    "firstDetailRendered": true
+  }
+}

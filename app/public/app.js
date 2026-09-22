@@ -50,6 +50,12 @@ function dashboard() {
     if (demo.shareEnabled) add(statuses, 'p', { className: 'status status-shared' }, 'Shared');
     add(copy, 'h2', { tabindex: '-1' }, demo.name);
     add(copy, 'p', { className: 'source' }, demo.sourceUrl);
+    if (Number.isInteger(demo.requestedPageCount)) {
+      const count = demo.status === 'ready' && Number.isInteger(demo.actualPageCount)
+        ? `Requested maximum: ${demo.requestedPageCount} pages; generated: ${demo.actualPageCount}.`
+        : `Requested maximum: ${demo.requestedPageCount} pages`;
+      add(copy, 'p', { className: 'page-count' }, count);
+    }
     if (demo.error) add(copy, 'p', { className: 'error-copy' }, demo.error);
     const actions = add(card, 'div', { className: 'demo-actions' });
     if (demo.status === 'ready') {
@@ -121,7 +127,8 @@ function dashboard() {
     button.disabled = true;
     message.textContent = 'Starting a bounded extraction...';
     try {
-      await request('/api/demos', { method: 'POST', body: JSON.stringify({ url: new FormData(form).get('url') }) });
+      const data = new FormData(form);
+      await request('/api/demos', { method: 'POST', body: JSON.stringify({ url: data.get('url'), pageCount: data.get('pageCount') }) });
       form.reset();
       message.textContent = 'Preview build started.';
       await refreshDemos(true);

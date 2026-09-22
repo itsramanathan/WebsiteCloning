@@ -1,5 +1,25 @@
 # Release notes
 
+## 0.2.0 - 2026-09-22
+
+Adds configurable, content-aware demo page counts.
+
+### Included
+
+- Accessible **Maximum demo pages** field with a default of five and a validated range of one through eight.
+- A request for five produces Home, Collection/Solutions, and three detail pages when the captured source supports them.
+- Smaller sources return the useful pages actually supported instead of failing or inventing products. A no-catalog single-page source returns one Home page with captured source copy.
+- Requested and generated counts are persisted, shown on the operator dashboard, and retained across Retry.
+- Omitted content is excluded from navigation, direct routes, catalog data, and cart state.
+- Backward compatibility for existing saved demos without the new page-count fields.
+- 34 Node acceptance tests plus Chromium desktop/phone verification.
+- Live Suitsupply evidence: a five-page request generated Home, Collection, and three distinct product details.
+- Terra implementation, Sol review, and Astra final technical approval. Astra's first review found a Home-only content gap; Terra repaired it, Sol approved the repair, and Astra approved the final source.
+
+### Password behavior
+
+Password behavior is unchanged. A loopback run without `OPERATOR_PASSWORD` creates a new random password on each process start. Set the same secret through `OPERATOR_PASSWORD` or a host secret manager when different machines or restarts must use a stable password.
+
 ## 0.1.0 - 2026-09-21
 
 First verified local prototype of the URL-to-demo website builder.

@@ -9,6 +9,8 @@ npm start
 
 Open `http://127.0.0.1:4320`. With the default loopback bind, the process generates and prints a new operator password when `OPERATOR_PASSWORD` is absent.
 
+Enter the public source URL and choose **Maximum demo pages** from one through eight. The value is a maximum: the builder returns fewer pages when the captured source supports less content, including a one-page Home preview for a genuine no-catalog source.
+
 ## Shared internal deployment
 
 Use one maintained Node.js LTS service behind an HTTPS reverse proxy. The service hosts both the operator dashboard and all generated preview paths; a separate deployment per prospect is unnecessary.
@@ -41,6 +43,8 @@ Back up only `DATA_DIR`. It contains preview records, locally captured assets, a
 
 - Verify `GET /login` returns HTTP 200 through the HTTPS origin.
 - Run `bash app/verify.sh` before deployment and after runtime upgrades.
+- Confirm a five-page request produces Home, Collection/Solutions, and three detail pages on a source with at least three credible items.
+- Confirm a smaller source discloses its lower generated count rather than padding or failing.
 - Confirm generated share links use the public HTTPS origin.
 - Test one private share from a different site or messaging context.
 - Confirm the service cannot fetch private, loopback, link-local, or reserved network addresses.

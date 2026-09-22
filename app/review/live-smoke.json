@@ -1,9 +1,11 @@
 {
   "source": "https://books.toscrape.com/",
-  "observedAt": "2026-09-22T04:03:18.216Z",
-  "durationMs": 6290,
+  "observedAt": "2026-09-22T05:58:38.178Z",
+  "durationMs": 6082,
   "status": "ready",
   "name": "Demo - Books to Scrape",
+  "requestedPageCount": 8,
+  "actualPageCount": 8,
   "sourcePages": [
     "https://books.toscrape.com/",
     "https://books.toscrape.com/catalogue/category/books_1/index.html",

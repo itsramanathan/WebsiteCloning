@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { id, sha256, slugify } from './util.js';
-import { LIMITS } from './extract.js';
+import { DEMO_PAGE_COUNT, LIMITS } from './extract.js';
 
 function clone(value) {
   return value === undefined ? undefined : structuredClone(value);
@@ -72,7 +72,7 @@ export class Store {
     return run;
   }
 
-  async createDemo(sourceUrl) {
+  async createDemo(sourceUrl, requestedPageCount = DEMO_PAGE_COUNT.default) {
     return this.mutate((state) => {
       if (Object.values(state.demos).filter((demo) => !demo.deleted).length >= 20) {
         const error = new Error('The local preview limit is 20. Delete an older preview before creating another.');
@@ -86,6 +86,8 @@ export class Store {
         id: demoId,
         slug: `${slugify(hostname)}-${id(3).toLowerCase()}`,
         sourceUrl,
+        requestedPageCount,
+        actualPageCount: null,
         name: `Demo - ${hostname}`,
         status: 'building',
         attempt: 1,
@@ -126,6 +128,7 @@ export class Store {
       if (!resolved.startsWith(`${this.root}${path.sep}`)) throw new Error('Artifact escaped the data directory.');
       demo.artifact = path.relative(this.root, resolved);
       demo.name = description.name;
+      demo.actualPageCount = Number.isInteger(description.actualPageCount) ? description.actualPageCount : null;
       demo.status = 'ready';
       demo.error = null;
       demo.updatedAt = this.now();
@@ -164,10 +167,12 @@ export class Store {
         error.status = 409;
         throw error;
       }
+      demo.requestedPageCount ??= DEMO_PAGE_COUNT.default;
       demo.attempt += 1;
       demo.status = 'building';
       demo.deadlineAt = this.now() + this.attemptMs;
       demo.artifact = null;
+      demo.actualPageCount = null;
       demo.shareEnabled = false;
       demo.shareTokenHash = null;
       demo.error = null;

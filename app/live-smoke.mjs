@@ -41,6 +41,7 @@ try {
   await page.getByLabel('Operator password').fill('live smoke password');
   await page.getByRole('button', { name: 'Enter workshop' }).click();
   await page.getByLabel('Public store or B2B website URL').fill('https://books.toscrape.com/');
+  await page.getByLabel('Maximum demo pages').fill('8');
   await page.getByRole('button', { name: 'Build preview' }).click();
   await page.getByRole('link', { name: 'Open preview' }).waitFor({ timeout: 90_000 });
   await page.getByRole('link', { name: 'Open preview' }).click();
@@ -68,6 +69,8 @@ try {
     durationMs: Date.now() - startedAt,
     status: demo.status,
     name: artifact.name,
+    requestedPageCount: artifact.requestedPageCount,
+    actualPageCount: artifact.actualPageCount,
     sourcePages: artifact.sourcePages,
     products: artifact.items.map(({ name, price, sourceUrl, description }) => ({ name, price, sourceUrl, descriptionChars: description?.length || 0 })),
     heroPresent: Boolean(artifact.hero),

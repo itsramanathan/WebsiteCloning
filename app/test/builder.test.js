@@ -5,6 +5,7 @@ import path from 'node:path';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { buildAttempt } from '../src/builder.js';
 import { LIMITS } from '../src/extract.js';
+import { demoPage } from '../src/ui.js';
 
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
@@ -26,9 +27,10 @@ test('builder caps pages and products, then localizes validated raster assets', 
     return { body: Buffer.from(home), contentType: 'text/html', finalUrl: url };
   };
 
-  const result = await buildAttempt({ sourceUrl: 'https://bounded.example/', attemptDir: root, fetch });
+  const result = await buildAttempt({ sourceUrl: 'https://bounded.example/', attemptDir: root, requestedPageCount: 8, fetch });
   const saved = JSON.parse(await readFile(result.artifact, 'utf8'));
   assert.equal(saved.items.length, LIMITS.products);
+  assert.equal(saved.actualPageCount, 8);
   assert.ok(saved.sourcePages.length <= LIMITS.pages);
   assert.equal(saved.assetSummary.count, LIMITS.products);
   assert.ok(saved.assetSummary.bytes <= LIMITS.assetBytes);
@@ -76,4 +78,41 @@ test('builder performs no filesystem writes when already aborted', async (contex
     fetch: async () => { throw new Error('fetch should not run'); },
   }), /cancelled/);
   await assert.rejects(access(attemptDir));
+});
+
+test('builder preserves and safely renders captured copy for a home-only preview', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'preview-builder-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const html = await readFile(new URL('./fixtures/no-catalog.html', import.meta.url));
+  const result = await buildAttempt({
+    sourceUrl: 'https://notes.example/',
+    attemptDir: root,
+    requestedPageCount: 5,
+    fetch: async (url) => ({ body: html, contentType: 'text/html', finalUrl: url }),
+  });
+  const artifact = JSON.parse(await readFile(result.artifact, 'utf8'));
+  const rendered = demoPage({
+    demo: { id: 'notes-preview' },
+    artifact,
+    session: { cart: {}, revision: 0 },
+    mode: 'preview',
+    view: 'home',
+  });
+
+  assert.deepEqual(artifact.home, {
+    heading: 'Notes from the field <unsafe>',
+    description: 'An essay & "notes" with no catalog.',
+  });
+  assert.match(rendered, /<h1>Notes from the field &lt;unsafe&gt;<\/h1>/);
+  assert.match(rendered, /<p>An essay &amp; &quot;notes&quot; with no catalog\.<\/p>/);
+  assert.doesNotMatch(rendered, /<h1>Notes from the field <unsafe><\/h1>/);
+
+  const legacyRendered = demoPage({
+    demo: { id: 'legacy-notes-preview' },
+    artifact: { ...artifact, home: undefined },
+    session: { cart: {}, revision: 0 },
+    mode: 'preview',
+    view: 'home',
+  });
+  assert.match(legacyRendered, /<h1>Editorial Notes<\/h1>/);
 });

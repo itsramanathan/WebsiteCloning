@@ -40,11 +40,17 @@ export function loginPage(message = '') {
 
 function demoCard(demo) {
   const status = escapeHtml(demo.status);
+  const pageCount = Number.isInteger(demo.requestedPageCount)
+    ? demo.status === 'ready' && Number.isInteger(demo.actualPageCount)
+      ? `<p class="page-count">Requested maximum: ${demo.requestedPageCount} pages; generated: ${demo.actualPageCount}.</p>`
+      : `<p class="page-count">Requested maximum: ${demo.requestedPageCount} pages</p>`
+    : '';
   return `<article class="demo-card" data-demo-id="${escapeHtml(demo.id)}" data-status="${status}" data-shared="${demo.shareEnabled ? 'true' : 'false'}" data-name="${escapeHtml(demo.name)}" data-error="${escapeHtml(demo.error || '')}">
-  <div>
+    <div>
     <div class="status-row"><p class="status status-${status}"><span></span>${status}</p>${demo.shareEnabled ? '<p class="status status-shared">Shared</p>' : ''}</div>
     <h2 tabindex="-1">${escapeHtml(demo.name)}</h2>
     <p class="source">${escapeHtml(demo.sourceUrl)}</p>
+    ${pageCount}
     ${demo.error ? `<p class="error-copy">${escapeHtml(demo.error)}</p>` : ''}
   </div>
   <div class="demo-actions">
@@ -67,10 +73,10 @@ export function dashboardPage(demos, csrf) {
 <main class="dashboard">
   <section class="builder-panel" aria-labelledby="build-heading">
     <div><p class="eyebrow">URL → bounded preview</p><h2 id="build-heading">Create a recognizable sample, not a clone.</h2>
-    <p>Reads static public HTML only, stores a maximum of four pages and six products, and never creates real orders.</p></div>
+    <p>Reads static public HTML only, stores a maximum of four source pages, and never creates real orders.</p></div>
     <form id="create-demo" class="url-form">
       <label for="source-url">Public store or B2B website URL</label>
-      <div class="url-row"><input id="source-url" name="url" type="url" inputmode="url" placeholder="https://example.com" required><button type="submit">Build preview</button></div>
+      <div class="url-row"><input id="source-url" name="url" type="url" inputmode="url" placeholder="https://example.com" required><div class="page-count-field"><label for="page-count">Maximum demo pages</label><input id="page-count" name="pageCount" type="number" min="1" max="8" step="1" value="5" required aria-describedby="page-count-help"><p id="page-count-help">We’ll create up to this many pages, based on what the source website actually provides.</p></div><button type="submit">Build preview</button></div>
       <p id="form-message" class="form-message" aria-live="polite"></p>
     </form>
   </section>
@@ -131,12 +137,18 @@ function categorySidebar(artifact) {
 
 export function demoPage({ demo, artifact, session, mode, view, item }) {
   const base = mode === 'share' ? `/share/${demo.id}` : `/preview/${demo.id}`;
+  const actualPageCount = Number.isInteger(artifact.actualPageCount) && artifact.actualPageCount >= 1
+    ? artifact.actualPageCount
+    : Math.max(1, (artifact.items || []).length + 2);
+  const canCollection = actualPageCount >= 2;
+  const items = (artifact.items || []).slice(0, Math.max(0, actualPageCount - 2));
+  const generatedArtifact = { ...artifact, items };
   const heroImage = assetUrl(demo.id, artifact.hero?.imageUrl);
   const compact = artifact.style?.layout === 'catalog-sidebar';
   const sidebar = categorySidebar(artifact);
   let content;
   if (view === 'collection') {
-    content = `<main class="demo-main"><section class="collection-heading"><p class="eyebrow">Selected public sample</p><h1>${artifact.kind === 'b2b' ? 'Solutions' : 'Collection'}</h1><p>${artifact.items.length} captured ${artifact.kind === 'b2b' ? 'offerings' : 'products'}.</p></section><div class="catalog-layout">${sidebar}<section class="${gridClass(artifact)}">${artifact.items.map((entry) => itemCard(entry, artifact, demo.id, base)).join('')}</section></div></main>`;
+    content = `<main class="demo-main"><section class="collection-heading"><p class="eyebrow">Selected public sample</p><h1>${artifact.kind === 'b2b' ? 'Solutions' : 'Collection'}</h1><p>${items.length ? `${items.length} captured ${artifact.kind === 'b2b' ? 'offerings' : 'products'}.` : 'No detail pages were included in this requested maximum.'}</p></section><div class="catalog-layout">${sidebar}<section class="${gridClass(artifact)}">${items.map((entry) => itemCard(entry, generatedArtifact, demo.id, base)).join('')}</section></div></main>`;
   } else if (view === 'item' && item) {
     const image = assetUrl(demo.id, item.imageUrl);
     content = `<main class="demo-main"><section class="detail-layout">
@@ -147,11 +159,14 @@ export function demoPage({ demo, artifact, session, mode, view, item }) {
     </section></main>`;
   } else if (artifact.hero) {
     content = `<main><section class="demo-hero ${artifact.hero.variant === 'split' ? 'split' : 'centered'}">
-      <div class="hero-copy"><p class="eyebrow">${escapeHtml(artifact.hero.eyebrow)}</p><h1>${escapeHtml(artifact.hero.title)}</h1>${artifact.hero.description ? `<p>${escapeHtml(artifact.hero.description)}</p>` : ''}<a class="button" href="${base}/collection">Browse the sample</a></div>
+      <div class="hero-copy"><p class="eyebrow">${escapeHtml(artifact.hero.eyebrow)}</p><h1>${escapeHtml(artifact.hero.title)}</h1>${artifact.hero.description ? `<p>${escapeHtml(artifact.hero.description)}</p>` : ''}${canCollection ? `<a class="button" href="${base}/collection">Browse the sample</a>` : ''}</div>
       ${heroImage ? `<div class="hero-image"><img src="${heroImage}" alt=""></div>` : ''}
-    </section><section class="featured"><div class="section-title"><div><p class="eyebrow">Captured selection</p><h2>${artifact.kind === 'b2b' ? 'Featured solutions' : 'Featured products'}</h2></div><a href="${base}/collection">View all</a></div><div class="${gridClass(artifact)}">${artifact.items.slice(0, 3).map((entry) => itemCard(entry, artifact, demo.id, base)).join('')}</div></section></main>`;
+    </section>${items.length ? `<section class="featured"><div class="section-title"><div><p class="eyebrow">Captured selection</p><h2>${artifact.kind === 'b2b' ? 'Featured solutions' : 'Featured products'}</h2></div><a href="${base}/collection">View all</a></div><div class="${gridClass(artifact)}">${items.slice(0, 3).map((entry) => itemCard(entry, generatedArtifact, demo.id, base)).join('')}</div></section>` : ''}</main>`;
   } else {
-    content = `<main class="demo-main catalog-home"><section class="catalog-lead"><p class="eyebrow">Selected public sample</p><h1>${escapeHtml(artifact.originalName)}</h1><p>Explore ${artifact.items.length} captured ${artifact.kind === 'b2b' ? 'offerings' : 'products'} in this bounded preview.</p></section><div class="catalog-layout">${sidebar}<section class="${gridClass(artifact)}">${artifact.items.map((entry) => itemCard(entry, artifact, demo.id, base)).join('')}</section></div></main>`;
+    const homeOnly = actualPageCount === 1;
+    const heading = homeOnly && artifact.home?.heading || artifact.originalName;
+    const description = homeOnly && artifact.home?.description || (items.length ? `Explore ${items.length} captured ${artifact.kind === 'b2b' ? 'offerings' : 'products'} in this bounded preview.` : 'This bounded preview preserves the captured public source information without adding catalog items.');
+    content = `<main class="demo-main catalog-home"><section class="catalog-lead"><p class="eyebrow">Selected public sample</p><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(description)}</p></section>${items.length ? `<div class="catalog-layout">${sidebar}<section class="${gridClass(artifact)}">${items.map((entry) => itemCard(entry, generatedArtifact, demo.id, base)).join('')}</section></div>` : ''}</main>`;
   }
   return shell({
     title: artifact.name,
@@ -161,10 +176,10 @@ export function demoPage({ demo, artifact, session, mode, view, item }) {
     body: `<div class="demo-notice">${escapeHtml(artifact.notice)}</div>
 <header class="demo-header">
   <a class="brand" href="${base}">${artifact.logoUrl ? `<img src="${assetUrl(demo.id, artifact.logoUrl)}" alt="${escapeHtml(artifact.originalName)}">` : `<span>${escapeHtml(artifact.name)}</span>`}</a>
-  <nav aria-label="Demo navigation"><a href="${base}">Home</a><a href="${base}/collection">${artifact.kind === 'b2b' ? 'Solutions' : 'Collection'}</a><a href="#demo-cart">${artifact.kind === 'b2b' ? 'Quote' : 'Cart'}</a></nav>
+  <nav aria-label="Demo navigation"><a href="${base}">Home</a>${canCollection ? `<a href="${base}/collection">${artifact.kind === 'b2b' ? 'Solutions' : 'Collection'}</a>` : ''}<a href="#demo-cart">${artifact.kind === 'b2b' ? 'Quote' : 'Cart'}</a></nav>
 </header>
 ${content}
-<section class="session-area">${cartPanel(artifact, session)}<p class="preview-note"><strong>Website preview only.</strong> Cart and quote actions stay in this local demo; no order is placed.</p></section>
+<section class="session-area">${cartPanel(generatedArtifact, session)}<p class="preview-note"><strong>Website preview only.</strong> Cart and quote actions stay in this local demo; no order is placed.</p></section>
 <footer class="demo-footer"><p>Source: <a href="${escapeHtml(artifact.sourceUrl)}" rel="noreferrer" target="_blank">${escapeHtml(new URL(artifact.sourceUrl).hostname)}</a></p><p>${escapeHtml(artifact.limitations.join(' '))}</p></footer>`,
   });
 }

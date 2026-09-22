@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createApp, themeCss } from '../src/server.js';
 
 const quiet = { error() {}, log() {} };
 
-function artifact(sourceUrl) {
+function artifact(sourceUrl, requestedPageCount = 5, itemCount = 3) {
+  const actualPageCount = itemCount ? Math.min(requestedPageCount, itemCount + 2) : 1;
+  const items = [
+    { id: 'pack-1', kind: 'product', name: 'Ridgeline Pack', price: '129.00', currency: 'USD', imageUrl: 'assets/01.png', sourceUrl: `${sourceUrl}products/pack` },
+    { id: 'bottle-2', kind: 'product', name: 'Field Bottle', sourceUrl: `${sourceUrl}products/bottle` },
+    { id: 'lamp-3', kind: 'product', name: 'Trail Lamp', sourceUrl: `${sourceUrl}products/lamp` },
+  ];
   return {
     version: 1,
     name: 'Demo - Northstar Supply',
@@ -21,10 +27,9 @@ function artifact(sourceUrl) {
     hero: { eyebrow: 'Store preview', title: 'Carry less. Go farther.', description: 'A source-informed fixture.', imageUrl: 'assets/01.png', variant: 'split' },
     logoUrl: undefined,
     style: { accent: '#28533f', surface: '#f4efe6', categories: ['Packs', 'Bottles'] },
-    items: [
-      { id: 'pack-1', kind: 'product', name: 'Ridgeline Pack', price: '129.00', currency: 'USD', imageUrl: 'assets/01.png', sourceUrl: `${sourceUrl}products/pack` },
-      { id: 'bottle-2', kind: 'product', name: 'Field Bottle', sourceUrl: `${sourceUrl}products/bottle` },
-    ],
+    requestedPageCount,
+    actualPageCount,
+    items: items.slice(0, Math.max(0, actualPageCount - 2)),
     assetSummary: { count: 1, bytes: 12 },
     limitations: ['Static public HTML only; source JavaScript was not executed.', 'One price remains unknown.'],
   };
@@ -48,14 +53,18 @@ function contrast(left, right) {
   return (values[0] + .05) / (values[1] + .05);
 }
 
-async function fixtureBuilder({ sourceUrl, attemptDir }) {
-  await mkdir(path.join(attemptDir, 'assets'), { recursive: true });
-  await writeFile(path.join(attemptDir, 'assets', '01.png'), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]));
-  const description = artifact(sourceUrl);
-  const file = path.join(attemptDir, 'artifact.json');
-  await writeFile(file, JSON.stringify(description));
-  return { artifact: file, description };
+function fixtureBuilderWithItems(itemCount) {
+  return async ({ sourceUrl, attemptDir, requestedPageCount }) => {
+    await mkdir(path.join(attemptDir, 'assets'), { recursive: true });
+    await writeFile(path.join(attemptDir, 'assets', '01.png'), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]));
+    const description = artifact(sourceUrl, requestedPageCount, itemCount);
+    const file = path.join(attemptDir, 'artifact.json');
+    await writeFile(file, JSON.stringify(description));
+    return { artifact: file, description };
+  };
 }
+
+const fixtureBuilder = fixtureBuilderWithItems(3);
 
 async function start(context, builder = fixtureBuilder, overrides = {}) {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'preview-server-'));
@@ -109,8 +118,8 @@ async function waitFor(predicate, timeout = 2_000) {
   throw new Error('Timed out waiting for test state.');
 }
 
-async function createReady(app, operatorCookie, csrfToken) {
-  const created = await api(app.base, '/api/demos', { cookie: operatorCookie, token: csrfToken, method: 'POST', body: { url: 'https://northstar.example/' } });
+async function createReady(app, operatorCookie, csrfToken, pageCount = 5) {
+  const created = await api(app.base, '/api/demos', { cookie: operatorCookie, token: csrfToken, method: 'POST', body: { url: 'https://northstar.example/', pageCount } });
   assert.equal(created.status, 202);
   const demo = (await created.json()).demo;
   await waitFor(async () => (await app.store.getDemo(demo.id))?.status === 'ready');
@@ -136,6 +145,84 @@ test('management requires login and CSRF, then builds a ready preview', async (c
   const preview = await fetch(`${app.base}/preview/${demo.id}`, { headers: { cookie: signedIn.cookie } });
   assert.equal(preview.status, 200);
   assert.match(await preview.text(), /Demo - sample products and information\. No real orders\./);
+});
+
+test('new demos require an exact page count and retries retain it', async (context) => {
+  const app = await start(context);
+  const signedIn = await login(app.base);
+  const token = await csrf(app.base, signedIn.cookie);
+  for (const pageCount of [undefined, 0, 9, 1.5, '5.5', 'five']) {
+    const response = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://northstar.example/', pageCount } });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /Maximum demo pages must be an integer from 1 to 8/);
+  }
+
+  const demo = await createReady(app, signedIn.cookie, token, 1);
+  assert.equal((await app.store.getDemo(demo.id)).requestedPageCount, 1);
+  let saved = JSON.parse(await readFile(app.store.artifactPath(await app.store.getDemo(demo.id)), 'utf8'));
+  assert.equal(saved.items.length, 0);
+  assert.deepEqual([saved.requestedPageCount, saved.actualPageCount], [1, 1]);
+
+  const retried = await api(app.base, `/api/demos/${demo.id}/retry`, { cookie: signedIn.cookie, token, method: 'POST', body: {} });
+  assert.equal(retried.status, 202);
+  assert.equal((await retried.json()).demo.requestedPageCount, 1);
+  await waitFor(async () => (await app.store.getDemo(demo.id))?.status === 'ready');
+  saved = JSON.parse(await readFile(app.store.artifactPath(await app.store.getDemo(demo.id)), 'utf8'));
+  assert.equal(saved.actualPageCount, 1);
+});
+
+test('generated routes and dashboard disclosure honor capped and minimal page counts', async (context) => {
+  const app = await start(context);
+  const signedIn = await login(app.base);
+  const token = await csrf(app.base, signedIn.cookie);
+  const one = await createReady(app, signedIn.cookie, token, 1);
+  const oneHome = await fetch(`${app.base}/preview/${one.id}`, { headers: { cookie: signedIn.cookie } });
+  assert.equal(oneHome.status, 200);
+  assert.doesNotMatch(await oneHome.text(), new RegExp(`/preview/${one.id}/collection`));
+  assert.equal((await fetch(`${app.base}/preview/${one.id}/collection`, { headers: { cookie: signedIn.cookie } })).status, 404);
+
+  const two = await createReady(app, signedIn.cookie, token, 2);
+  const twoCollection = await fetch(`${app.base}/preview/${two.id}/collection`, { headers: { cookie: signedIn.cookie } });
+  assert.equal(twoCollection.status, 200);
+  assert.doesNotMatch(await twoCollection.text(), /href="[^"]+\/item\//);
+
+  const cappedApp = await start(context, fixtureBuilderWithItems(1));
+  const cappedLogin = await login(cappedApp.base);
+  const cappedToken = await csrf(cappedApp.base, cappedLogin.cookie);
+  const capped = await createReady(cappedApp, cappedLogin.cookie, cappedToken, 5);
+  const saved = JSON.parse(await readFile(cappedApp.store.artifactPath(await cappedApp.store.getDemo(capped.id)), 'utf8'));
+  assert.deepEqual([saved.requestedPageCount, saved.actualPageCount, saved.items.length], [5, 3, 1]);
+  const dashboard = await fetch(`${cappedApp.base}/`, { headers: { cookie: cappedLogin.cookie } });
+  assert.match(await dashboard.text(), /Requested maximum: 5 pages; generated: 3\./);
+  assert.equal((await fetch(`${cappedApp.base}/preview/${capped.id}/item/pack-1`, { headers: { cookie: cappedLogin.cookie } })).status, 200);
+  assert.equal((await fetch(`${cappedApp.base}/preview/${capped.id}/item/bottle-2`, { headers: { cookie: cappedLogin.cookie } })).status, 404);
+
+  const homeOnlyApp = await start(context, fixtureBuilderWithItems(0));
+  const homeOnlyLogin = await login(homeOnlyApp.base);
+  const homeOnlyToken = await csrf(homeOnlyApp.base, homeOnlyLogin.cookie);
+  const homeOnly = await createReady(homeOnlyApp, homeOnlyLogin.cookie, homeOnlyToken, 5);
+  const homeOnlyPage = await fetch(`${homeOnlyApp.base}/preview/${homeOnly.id}`, { headers: { cookie: homeOnlyLogin.cookie } });
+  assert.doesNotMatch(await homeOnlyPage.text(), new RegExp(`/preview/${homeOnly.id}/collection`));
+  assert.equal((await fetch(`${homeOnlyApp.base}/preview/${homeOnly.id}/collection`, { headers: { cookie: homeOnlyLogin.cookie } })).status, 404);
+});
+
+test('legacy demos without a page count keep rendering their stored artifact', async (context) => {
+  const app = await start(context);
+  const signedIn = await login(app.base);
+  const token = await csrf(app.base, signedIn.cookie);
+  const demo = await createReady(app, signedIn.cookie, token);
+  delete app.store.state.demos[demo.id].requestedPageCount;
+  delete app.store.state.demos[demo.id].actualPageCount;
+  await app.store.save();
+  const artifactPath = app.store.artifactPath(await app.store.getDemo(demo.id));
+  const saved = JSON.parse(await readFile(artifactPath, 'utf8'));
+  delete saved.requestedPageCount;
+  delete saved.actualPageCount;
+  await writeFile(artifactPath, JSON.stringify(saved));
+
+  const preview = await fetch(`${app.base}/preview/${demo.id}`, { headers: { cookie: signedIn.cookie } });
+  assert.equal(preview.status, 200);
+  assert.match(await preview.text(), /Ridgeline Pack/);
 });
 
 test('address-scoped login lockout rejects correct credentials until its window expires', async (context) => {
@@ -315,7 +402,7 @@ test('job watchdog releases a timed-out claim and removes an uncooperative late 
   const app = await start(context, builder, { storeOptions: { attemptMs: 50 } });
   const signedIn = await login(app.base);
   const token = await csrf(app.base, signedIn.cookie);
-  const firstResponse = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://slow.example/' } });
+  const firstResponse = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://slow.example/', pageCount: 5 } });
   const first = (await firstResponse.json()).demo;
   await waitFor(() => app.runner.active === null);
   assert.equal((await app.store.getDemo(first.id)).status, 'failed');
@@ -355,11 +442,11 @@ test('delete cancels its job slot without letting a late worker clear the next j
   const app = await start(context, builder);
   const signedIn = await login(app.base);
   const token = await csrf(app.base, signedIn.cookie);
-  const created = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://northstar.example/' } });
+  const created = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://northstar.example/', pageCount: 5 } });
   const demo = (await created.json()).demo;
   await waitFor(() => calls === 1);
   assert.equal((await api(app.base, `/api/demos/${demo.id}`, { cookie: signedIn.cookie, token, method: 'DELETE' })).status, 200);
-  const nextResponse = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://next.example/' } });
+  const nextResponse = await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://next.example/', pageCount: 5 } });
   assert.equal(nextResponse.status, 202, 'delete promptly releases the single-job slot');
   const next = (await nextResponse.json()).demo;
   await waitFor(() => calls === 2);
@@ -374,7 +461,7 @@ test('delete cancels its job slot without letting a late worker clear the next j
     }
   });
   assert.notEqual(app.runner.active, null, 'the deleted job finalizer does not clear the next job');
-  assert.equal((await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://third.example/' } })).status, 429);
+  assert.equal((await api(app.base, '/api/demos', { cookie: signedIn.cookie, token, method: 'POST', body: { url: 'https://third.example/', pageCount: 5 } })).status, 429);
   releaseSecond();
   await waitFor(() => app.runner.active === null);
   assert.equal((await app.store.getDemo(next.id)).status, 'ready');

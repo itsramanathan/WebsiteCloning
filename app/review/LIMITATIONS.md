@@ -1,7 +1,7 @@
 # Explicit limitations
 
 - Static public HTML only: source JavaScript is never executed. JavaScript-only and bot-blocked catalogs can fail.
-- Extraction is heuristic and bounded, not a browser/model fidelity system. Exact visual resemblance is unverified.
+- Extraction is heuristic and bounded, not a browser/model fidelity system. Output is limited to one through eight navigable pages and available captured products or offerings; a no-catalog source is a one-page Home preview. Exact visual resemblance is unverified.
 - Images are restricted to validated JPEG, PNG, and WebP files. SVG, fonts, video, and remote hotlinks are omitted.
 - Up to two linked stylesheets are safely fetched and parsed for bounded allowlisted presentation tokens only. Imports, font files, images referenced by CSS, selectors, declarations, and source CSS are never injected or executed.
 - No existing assistant is embedded. The candidate widget mutates its backend before `onAddToCart`, so safe reuse requires the adapter described in `INTEGRATION.md`.

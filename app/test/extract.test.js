@@ -35,6 +35,28 @@ test('extracts B2B offerings and enforces the lower offering cap', async () => {
   assert.equal(description.hero, null, 'a heading alone does not invent a hero');
 });
 
+test('caps requested pages to the captured catalog without padding it', async () => {
+  const retail = extractPage(await readFile(new URL('retail.html', fixtures), 'utf8'), 'https://northstar.example/');
+  const fivePages = buildDescription([retail], retail.url, 5);
+  const threePages = buildDescription([retail], retail.url, 3);
+  const onePage = buildDescription([retail], retail.url, 1);
+  const twoPages = buildDescription([retail], retail.url, 2);
+  assert.equal(fivePages.items.length, 3);
+  assert.equal(fivePages.requestedPageCount, 5);
+  assert.equal(fivePages.actualPageCount, 5);
+  assert.equal(threePages.items.length, 1);
+  assert.equal(threePages.actualPageCount, 3);
+  assert.equal(onePage.items.length, 0);
+  assert.equal(onePage.actualPageCount, 1);
+  assert.equal(twoPages.items.length, 0);
+  assert.equal(twoPages.actualPageCount, 2);
+
+  const b2b = extractPage(await readFile(new URL('b2b.html', fixtures), 'utf8'), 'https://harbor.example/');
+  const capped = buildDescription([b2b], b2b.url, 6);
+  assert.equal(capped.items.length, LIMITS.offerings);
+  assert.equal(capped.actualPageCount, 5);
+});
+
 test('open graph and logo images do not invent or replace visible hero evidence', () => {
   const catalog = '<article class="product"><h2>Known item</h2></article>';
   const metadataOnly = extractPage(`<title>Store</title><meta property="og:image" content="/share.jpg"><img class="logo" src="/logo.jpg">${catalog}`, 'https://store.example/');
@@ -71,10 +93,8 @@ test('detail-page evidence fills missing catalog facts without replacing known f
   assert.equal(description.items[0].description, 'Verified detail copy.');
 });
 
-test('fails instead of inventing a catalog', async () => {
+test('renders a one-page home preview when no credible catalog exists', async () => {
   const html = await readFile(new URL('no-catalog.html', fixtures), 'utf8');
-  assert.throws(
-    () => buildDescription([extractPage(html, 'https://notes.example/')], 'https://notes.example/'),
-    (error) => error.code === 'NO_CATALOG' && /No credible/.test(error.message),
-  );
+  const description = buildDescription([extractPage(html, 'https://notes.example/')], 'https://notes.example/', 5);
+  assert.deepEqual([description.requestedPageCount, description.actualPageCount, description.items.length], [5, 1, 0]);
 });

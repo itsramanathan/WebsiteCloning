@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { buildAttempt } from './builder.js';
+import { DEMO_PAGE_COUNT } from './extract.js';
 import { Store } from './store.js';
 import { validateUrl } from './safe-fetch.js';
 import { clampInteger, constantEqual, cookie, cookies, id, readBody, sendHtml, sendJson } from './util.js';
@@ -83,7 +84,7 @@ export class JobRunner {
       try {
         const remaining = demo.deadlineAt - Date.now();
         if (remaining <= 0) throw deadlineError();
-        const work = Promise.resolve().then(() => this.builder({ sourceUrl: demo.sourceUrl, attemptDir, deadline: demo.deadlineAt, signal: controller.signal }));
+        const work = Promise.resolve().then(() => this.builder({ sourceUrl: demo.sourceUrl, attemptDir, requestedPageCount: demo.requestedPageCount, deadline: demo.deadlineAt, signal: controller.signal }));
         void work.then(
           () => cleanupAfterSettlement && this.store.removeAttempt(demo.id, demo.attempt),
           () => cleanupAfterSettlement && this.store.removeAttempt(demo.id, demo.attempt),
@@ -137,7 +138,7 @@ function userFacingBuildError(error) {
   const allowed = new Set([
     'INVALID_URL', 'INVALID_SCHEME', 'URL_CREDENTIALS', 'NONSTANDARD_PORT', 'INVALID_HOST', 'NONPUBLIC_ADDRESS',
     'RESPONSE_TOO_LARGE', 'TIMEOUT', 'DEADLINE', 'TOO_MANY_REDIRECTS', 'INVALID_REDIRECT', 'UNSUPPORTED_ENCODING',
-    'INVALID_COMPRESSION', 'INCOMPLETE_RESPONSE', 'HTTP_STATUS', 'NO_CATALOG',
+    'INVALID_COMPRESSION', 'INCOMPLETE_RESPONSE', 'HTTP_STATUS', 'NO_CATALOG', 'INVALID_PAGE_COUNT', 'INSUFFICIENT_CATALOG',
   ]);
   if (allowed.has(error.code) || /catalog|HTML|deadline|redirect|source/i.test(error.message)) return error.message;
   return 'The source could not be turned into a complete preview. It may block static requests or require JavaScript.';
@@ -290,6 +291,25 @@ function publicBase(options) {
   return `http://${host}:${options.port}`;
 }
 
+function requestedPageCount(value) {
+  const validNumber = typeof value === 'number' && Number.isInteger(value);
+  const validString = typeof value === 'string' && /^[1-8]$/.test(value);
+  const count = validNumber ? value : validString ? Number(value) : null;
+  if (count !== null && count >= DEMO_PAGE_COUNT.min && count <= DEMO_PAGE_COUNT.max) return count;
+  const error = new Error(`Maximum demo pages must be an integer from ${DEMO_PAGE_COUNT.min} to ${DEMO_PAGE_COUNT.max}.`);
+  error.status = 400;
+  throw error;
+}
+
+function artifactPageCount(artifact) {
+  if (Number.isInteger(artifact.actualPageCount) && artifact.actualPageCount >= 1) return artifact.actualPageCount;
+  return Math.max(1, (Array.isArray(artifact.items) ? artifact.items.length : 0) + 2);
+}
+
+function generatedItems(artifact) {
+  return (artifact.items || []).slice(0, Math.max(0, artifactPageCount(artifact) - 2));
+}
+
 export async function createApp(options = {}) {
   const config = {
     host: options.host || '127.0.0.1',
@@ -363,13 +383,14 @@ export async function createApp(options = {}) {
         if (!session) return;
         const body = await readBody(request);
         if (!requireCsrf(request, response, session, body)) return;
+        const pageCount = requestedPageCount(body.pageCount);
         if (!generationLimit.take(cookies(request).operator_session)) return sendJson(response, 429, { error: 'Generation limit reached. Try again later.' });
         const claim = runner.claim();
         if (!claim) return sendJson(response, 429, { error: 'One preview is already building. Wait for it to finish.' });
         let demo;
         try {
           const source = validateUrl(body.url).href;
-          demo = await store.createDemo(source);
+          demo = await store.createDemo(source, pageCount);
         } catch (error) {
           runner.release(claim);
           throw error;
@@ -450,7 +471,8 @@ export async function createApp(options = {}) {
         if (!access) return sendHtml(response, 404, notFoundPage());
         const artifact = await loadArtifact(store, demo);
         if (!artifact) return sendHtml(response, 404, notFoundPage('The current artifact is incomplete.'));
-        const item = route.itemId ? artifact.items.find((candidate) => candidate.id === route.itemId) : null;
+        if (route.view === 'collection' && artifactPageCount(artifact) < 2) return sendHtml(response, 404, notFoundPage());
+        const item = route.itemId ? generatedItems(artifact).find((candidate) => candidate.id === route.itemId) : null;
         if (route.view === 'item' && !item) return sendHtml(response, 404, notFoundPage('That sample item is not included.'));
         let current = access.session;
         const page = route.view === 'item' ? `item:${item.id}` : route.view;
@@ -498,8 +520,9 @@ export async function createApp(options = {}) {
         const access = demo && await demoAccess(request, store, demoId, operatorSessions, config, false);
         const artifact = demo && access ? await loadArtifact(store, demo) : null;
         if (!artifact || !access) return sendJson(response, 404, { error: 'Demo session not found.' });
-        if (request.method === 'GET' && action === 'catalog') return sendJson(response, 200, { demoId, kind: artifact.kind, items: artifact.items, sourceUrl: artifact.sourceUrl });
-        if (request.method === 'GET' && action === 'context') return sendJson(response, 200, { demoId, currentPage: access.session.currentPage, catalog: artifact.items, session: access.session });
+        const items = generatedItems(artifact);
+        if (request.method === 'GET' && action === 'catalog') return sendJson(response, 200, { demoId, kind: artifact.kind, items, sourceUrl: artifact.sourceUrl });
+        if (request.method === 'GET' && action === 'context') return sendJson(response, 200, { demoId, currentPage: access.session.currentPage, catalog: items, session: access.session });
         if (request.method !== 'POST' || !['navigate', 'cart', 'quote'].includes(action)) return sendJson(response, 405, { error: 'Method not allowed.' });
         assertJson(request);
         const body = await readBody(request);
@@ -507,7 +530,7 @@ export async function createApp(options = {}) {
         if (expected === null) return sendJson(response, 400, { error: 'expectedRevision must be a non-negative integer.' });
         let updated;
         if (action === 'cart') {
-          const item = artifact.items.find((candidate) => candidate.id === body.itemId);
+          const item = items.find((candidate) => candidate.id === body.itemId);
           const quantity = clampInteger(body.quantity, 0, 99);
           if (!item || quantity === null) return sendJson(response, 400, { error: 'Choose a captured item and a quantity from 0 to 99.' });
           updated = await store.updateSession(demoId, access.token, expected, (session) => {
@@ -520,7 +543,7 @@ export async function createApp(options = {}) {
           }, access.operator);
         } else {
           const target = String(body.target || '');
-          const allowed = target === 'home' || target === 'collection' || target.startsWith('item:') && artifact.items.some((item) => target === `item:${item.id}`);
+          const allowed = target === 'home' || target === 'collection' && artifactPageCount(artifact) >= 2 || target.startsWith('item:') && items.some((item) => target === `item:${item.id}`);
           if (!allowed) return sendJson(response, 400, { error: 'Navigation target is outside this demo.' });
           updated = await store.updateSession(demoId, access.token, expected, (session) => { session.currentPage = target; }, access.operator);
         }
