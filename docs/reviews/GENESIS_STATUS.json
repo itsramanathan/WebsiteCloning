@@ -1,0 +1,36 @@
+{
+  "task": "WC-001",
+  "state": "complete",
+  "gates": [
+    {
+      "id": "demo-acceptance",
+      "status": "pass",
+      "evidence": {
+        "path": ".genesis/evidence/WC-001-demo-acceptance-21a79ddd-60b1-484c-8e0f-7131d7995a0c.json",
+        "hash": "204cff7064414b49a6c272e061e266b699b2508a017474319174eef143b3b9a9",
+        "source_hash": "7c3e30871e911a6b16159972e9d6db029c66cdb29d52feba86b74489228c7d34",
+        "config_hash": "39cc89a2fb7c89f2b1aea47a8d5757136945ade84a5e3f59a95d37275f8511fa",
+        "observed_at": "2026-09-22T05:07:44.652Z"
+      }
+    },
+    {
+      "id": "cross-provider-review",
+      "status": "pass",
+      "evidence": {
+        "path": ".genesis/evidence/WC-001-cross-provider-review-6b00691f-6d0e-4d8f-864e-f0ea86c95f9b.json",
+        "hash": "410f01cf0b51fec7e299bcdd3ac833836c1d5a71238f13de237e37633c2257d9",
+        "source_hash": "7c3e30871e911a6b16159972e9d6db029c66cdb29d52feba86b74489228c7d34",
+        "config_hash": "39cc89a2fb7c89f2b1aea47a8d5757136945ade84a5e3f59a95d37275f8511fa",
+        "observed_at": "2026-09-22T05:07:45.000Z"
+      }
+    },
+    {
+      "id": "independent-review",
+      "status": "pass",
+      "evidence": {
+        "approval": "User explicitly approved the reviewed release after receiving test evidence, Fable approval, limitations, and the pending-gate disclosure."
+      }
+    }
+  ],
+  "review_source_hash": "7c3e30871e911a6b16159972e9d6db029c66cdb29d52feba86b74489228c7d34"
+}

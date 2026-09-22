@@ -1,0 +1,91 @@
+{
+  "source": "https://books.toscrape.com/",
+  "observedAt": "2026-09-22T04:03:18.216Z",
+  "durationMs": 6290,
+  "status": "ready",
+  "name": "Demo - Books to Scrape",
+  "sourcePages": [
+    "https://books.toscrape.com/",
+    "https://books.toscrape.com/catalogue/category/books_1/index.html",
+    "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+    "https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html"
+  ],
+  "products": [
+    {
+      "name": "A Light in the Attic",
+      "price": "£51.77",
+      "sourceUrl": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+      "descriptionChars": 1017
+    },
+    {
+      "name": "Tipping the Velvet",
+      "price": "£53.74",
+      "sourceUrl": "https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html",
+      "descriptionChars": 1029
+    },
+    {
+      "name": "Soumission",
+      "price": "£50.10",
+      "sourceUrl": "https://books.toscrape.com/catalogue/soumission_998/index.html",
+      "descriptionChars": 0
+    },
+    {
+      "name": "Sharp Objects",
+      "price": "£47.82",
+      "sourceUrl": "https://books.toscrape.com/catalogue/sharp-objects_997/index.html",
+      "descriptionChars": 0
+    },
+    {
+      "name": "Sapiens: A Brief History of Humankind",
+      "price": "£54.23",
+      "sourceUrl": "https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html",
+      "descriptionChars": 0
+    },
+    {
+      "name": "The Requiem Red",
+      "price": "£22.65",
+      "sourceUrl": "https://books.toscrape.com/catalogue/the-requiem-red_995/index.html",
+      "descriptionChars": 0
+    }
+  ],
+  "heroPresent": false,
+  "style": {
+    "accent": "#428bca",
+    "surface": "#fff",
+    "gridColumns": 4,
+    "density": "compact",
+    "font": "sans",
+    "layout": "catalog-sidebar",
+    "categories": [
+      "Books",
+      "Travel",
+      "Mystery",
+      "Historical Fiction",
+      "Sequential Art",
+      "Classics",
+      "Philosophy",
+      "Romance"
+    ]
+  },
+  "assetSummary": {
+    "count": 6,
+    "bytes": 47259
+  },
+  "limitations": [
+    "Static public HTML only; source JavaScript was not executed.",
+    "No source logo was available in the captured HTML."
+  ],
+  "browser": {
+    "viewports": [
+      "1280x720",
+      "390x844"
+    ],
+    "views": [
+      "home",
+      "collection",
+      "detail"
+    ],
+    "pageErrors": [],
+    "horizontalOverflowAtPhone": false
+  }
+}
